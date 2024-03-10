@@ -17,13 +17,14 @@
 #include <core.p4>
 #include <v1model.p4>
 
+
 #include "include/header.p4"
 #include "include/parser.p4"
 #include "include/checksum.p4"
 
 #define CPU_CLONE_SESSION_ID 99
 #define UN_BLOCK_MASK     0xffffffff000000000000000000000000
-
+							
 
 control IngressPipeImpl (inout parsed_headers_t hdr,
                          inout local_metadata_t local_metadata,
@@ -86,7 +87,7 @@ control IngressPipeImpl (inout parsed_headers_t hdr,
     }
 
     // TODO: implement ecmp with ipv6.src+ipv6.dst+ipv6.flow_label
-    action_selector(HashAlgorithm.crc16, 32w64, 32w10) ip6_ecmp_selector;
+    //action_selector(HashAlgorithm.crc16, 32w64, 32w10) ip6_ecmp_selector;
     direct_counter(CounterType.packets_and_bytes) routing_v6_counter;
     table routing_v6 {
 	    key = {
@@ -100,7 +101,7 @@ control IngressPipeImpl (inout parsed_headers_t hdr,
 	        set_next_hop;
         }
         counters = routing_v6_counter;
-        implementation = ip6_ecmp_selector;
+        //implementation = ip6_ecmp_selector;
     }
 
     // TODO calc checksum
@@ -389,7 +390,10 @@ control IngressPipeImpl (inout parsed_headers_t hdr,
      */
 
     action clone_to_cpu() {
-        clone3(CloneType.I2E, CPU_CLONE_SESSION_ID, standard_metadata);
+        //clone3(CloneType.I2E, CPU_CLONE_SESSION_ID, standard_metadata); //DEPRACTED need OG project compiler
+        local_metadata.perserv_CPU_meta.ingress_port = standard_metadata.ingress_port;
+        local_metadata.perserv_CPU_meta.egress_port = CPU_PORT;                         //the packet only gets the egress right before egress, so we use CPU_PORT value
+        clone_preserving_field_list(CloneType.I2E, CPU_CLONE_SESSION_ID, CLONE_FL_clone3);
     }
 
     direct_counter(CounterType.packets_and_bytes) acl_counter;
@@ -464,7 +468,7 @@ control IngressPipeImpl (inout parsed_headers_t hdr,
        	      	multicast.apply();
 	        }	
 	    }
-
+        
         acl.apply();
     
     }
@@ -474,14 +478,33 @@ control EgressPipeImpl (inout parsed_headers_t hdr,
                         inout local_metadata_t local_metadata,
                         inout standard_metadata_t standard_metadata) {
     apply {
-        if (standard_metadata.egress_port == CPU_PORT) {
-		    hdr.packet_in.setValid();
-		    hdr.packet_in.ingress_port = standard_metadata.ingress_port;		
-        }
-
-        if (local_metadata.is_multicast == true
-             && standard_metadata.ingress_port == standard_metadata.egress_port) {
-            mark_to_drop(standard_metadata);
+        if (standard_metadata.instance_type == BMV2_V1MODEL_INSTANCE_TYPE_INGRESS_CLONE) {
+            // write code here that works the same was as the original, except it uses
+            // only metadata field values that you have explicitly preserved.
+            if (local_metadata.perserv_CPU_meta.egress_port == CPU_PORT) { //packets for the controller, being a cloned packet we look at the struct
+                hdr.packet_in.setValid();
+                hdr.packet_in.ingress_port = local_metadata.perserv_CPU_meta.ingress_port;
+            }
+            if (local_metadata.is_multicast == true && local_metadata.perserv_CPU_meta.ingress_port == local_metadata.perserv_CPU_meta.egress_port) {
+                mark_to_drop(standard_metadata);
+            }
+        } else if ((standard_metadata.instance_type == BMV2_V1MODEL_INSTANCE_TYPE_NORMAL) || (standard_metadata.instance_type == BMV2_V1MODEL_INSTANCE_TYPE_REPLICATION))  {
+            // Put a copy of the original egress code here, which seems to have been
+            // written assuming that all standard_metadata fields were preserved, which
+            // should be the case for NORMAL packets.
+            if (standard_metadata.egress_port == CPU_PORT) {
+                hdr.packet_in.setValid();
+                hdr.packet_in.ingress_port = standard_metadata.ingress_port;		
+            }
+            if (local_metadata.is_multicast == true && standard_metadata.ingress_port == standard_metadata.egress_port) {
+                mark_to_drop(standard_metadata);
+            }
+        } else {
+            // Not clear to me whether you need any further branches to handle other
+            // cases of the value of instance_type, but if. you want to be cautious
+            // I would put a log_msg() extern call here that prints a special message
+            // you can easily 'grep' for in the log files to see if this ever happens.
+            log_msg("Unexpected instance_type in EgressPipeImpl: ", { standard_metadata.instance_type });
         }
     }
 }

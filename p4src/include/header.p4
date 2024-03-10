@@ -135,8 +135,16 @@ header ndp_option_t {
     bit<48> value;
 }
 
+const bit<8> CLONE_FL_clone3  = 3; 
+struct preserving_metadata_CPU_t {
+    @field_list(CLONE_FL_clone3)
+    bit<9> ingress_port;
+    @field_list(CLONE_FL_clone3)
+    bit<9> egress_port;
+}
+
 //Custom metadata definition
-struct local_metadata_t {
+struct local_metadata_t {                   
     bool is_multicast;
     bool skip_l2;
     bool xconnect;
@@ -147,7 +155,10 @@ struct local_metadata_t {
     l4_port_t l4_src_port;
     l4_port_t l4_dst_port;
     bool ipv4_update;
+    preserving_metadata_CPU_t perserv_CPU_meta; //to migrate from clone3() to clone_preserving() in the clone_to_CPU scenario
 }
+
+
 
 struct parsed_headers_t {
     ethernet_t ethernet;

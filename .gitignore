@@ -1,0 +1,12 @@
+
+*.jar
+Rubbish/
+*.class
+desktop.ini
+Code/ngsdn-tutorial/topopoly.png
+Documents/*
+**/log/
+**/target/
+**/tmp/
+
+*.log
