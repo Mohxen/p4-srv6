@@ -7,9 +7,12 @@ make app-build
 make app-reload
 make netcfg
 
+make onos-cli
+# password: rocks
+
 #--------------------at ONOS cli (make onos-cli)
 source /config/routing_tables.txt
-source /config/ua_config.txT
+source /config/ua_config.txt
 
 
 
